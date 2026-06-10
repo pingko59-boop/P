@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>เกมทายภาพพยัญชนะไทย 44 ตัว (เวอร์ชันเสถียรที่สุด)</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@400;700&display=swap" rel="stylesheet">
+
+    <style>
+        * { box-sizing: border-box; }
+        body { 
+            margin: 0; padding: 0; 
+            font-family: 'Kanit', sans-serif; 
+            overflow: hidden; user-select: none; 
+            background-color: #000;
+            width: 100vw; height: 100vh;
+        }
+
+        /* 🎥 กล้องเว็บแคมเต็มจอเป็นพื้นหลัง (โหมดกระจกเงา) */
+        #webcam { 
+            position: absolute; top: 0; left: 0;
+            width: 100%; height: 100%;
+            object-fit: cover;
+            z-index: 1;
+            transform: scaleX(-1); 
+        }
+
+        /* เลเยอร์ควบคุมอินเตอร์เฟสเกม */
+        #game-container { 
+            position: absolute; top: 0; left: 0;
+            width: 100%; height: 100%;
+            display: flex; justify-content: space-between; align-items: center; 
+            padding: 0 50px;
+            z-index: 2;
+            background: rgba(0, 0, 0, 0.15);
+        }
+
+        /* 🏆 ป้ายคะแนนดีไซน์มนโค้ง */
+        #score-board {
+            position: absolute; top: 30px; left: 50%; transform: translateX(-50%);
+            background: linear-gradient(135deg, #ccfbf1 0%, #ffffff 100%); 
+            padding: 10px 45px;
+            border-radius: 50px; font-size: 2.2rem; font-weight: bold; color: #0f766e;
+            box-shadow: 0 8px 32px rgba(15, 118, 110, 0.3); z-index: 15;
+            border: 4px solid #2dd4bf;
+            text-align: center;
+            min-width: 380px;
+        }
+        #score-text { color: #06b6d4; font-size: 2.6rem; }
+
+        /* 🧊 ดีไซน์กระจกฝ้าโปร่งแสง */
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.25);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            border: 2px solid rgba(255, 255, 255, 0.4);
+            border-radius: 30px;
+            box-shadow: 0 16px 32px rgba(0, 0, 0, 0.2);
+            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); 
+        }
+
+        /* กล่องช้อยส์ซ้าย-ขวา */
+        .choice-box { 
+            width: 25%; height: 65vh; 
+            display: flex; flex-direction: column; justify-content: center; align-items: center; 
+            position: relative;
+        }
+        .char-text {
+            font-size: 10rem; font-weight: bold; color: #ffffff;
+            text-shadow: 3px 3px 15px rgba(0,0,0,0.4);
+        }
+
+        /* เอฟเฟกต์เมื่อเลือกช้อยส์ค้างไว้ */
+        .active-choice { 
+            transform: scale(1.08); 
+            background: rgba(45, 212, 191, 0.4);
+            border-color: #2dd4bf;
+            box-shadow: 0 0 40px rgba(45, 212, 191, 0.6); 
+        }
+
+        /* 🔄 วงแหวนนับเวลาถอยหลัง */
+        .progress-container {
+            position: relative; width: 100px; height: 100px;
+            margin-top: -10px; display: none;
+        }
+        .progress-svg { transform: rotate(-90deg); width: 100px; height: 100px; }
+        .progress-bg { fill: none; stroke: rgba(255,255,255,0.3); stroke-width: 8; }
+        .progress-bar { 
+            fill: none; stroke: #2dd4bf; stroke-width: 8; 
+            stroke-dasharray: 251.2; stroke-dashoffset: 251.2;
+            transition: stroke-dashoffset 0.1s linear;
+        }
+        .progress-text {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: white; font-weight: bold; font-size: 1.2rem; text-align: center;
+            text-shadow: 1px 1px 5px rgba(0,0,0,0.5);
+        }
+
+        /* 🖼️ จอแสดงรูปภาพคำถามตรงกลาง */
+        #center-display { 
+            width: 42%; height: 65vh; 
+            display: flex; flex-direction: column; justify-content: space-between; align-items: center; 
+            padding: 20px 30px; text-align: center;
+        }
+        #question-title { font-size: 2.2rem; color: #ffffff; font-weight: bold; text-shadow: 2px 2px 8px rgba(0,0,0,0.6); }
+        
+        #animal-img-container {
+            width: 100%; height: 70%;
+            display: flex; justify-content: center; align-items: center;
+            position: relative;
+        }
+        
+        /* 🔍 เปลี่ยนการแสดงผลมาใช้ตัว Emoji ขนาดใหญ่พิเศษ สวยงาม คมชัด ไม่มีวันพัง */
+        #emoji-display {
+            font-size: 11rem;
+            line-height: 1;
+            filter: drop-shadow(0px 10px 15px rgba(0,0,0,0.4));
+            animation: bounce 2s infinite;
+            user-select: none;
+        }
+
+        #hint-text { font-size: 1.5rem; color: #ffe4e6; font-weight: bold; text-shadow: 2px 2px 6px rgba(0,0,0,0.6); }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-12px); }
+        }
+
+        /* 🚨 ป๊อปอัปแจ้งผลลัพธ์ */
+        #feedback { 
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+            font-size: 4.5rem; font-weight: bold; padding: 40px 70px; border-radius: 40px; 
+            display: none; z-index: 100; animation: pop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); 
+            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.5); text-align: center;
+            width: 80%; max-width: 650px;
+        }
+        @keyframes pop { 0% { transform: translate(-50%, -50%) scale(0.3); } 100% { transform: translate(-50%, -50%) scale(1); } }
+    </style>
+</head>
+<body>
+
+    <video id="webcam" autoplay playsinline muted></video>
+
+    <div id="score-board">✨ คะแนนหนูน้อย: <span id="score-text">0</span> ข้อ ✨</div>
+
+    <div id="game-container">
+        <div id="choice-left" class="choice-box glass-panel">
+            <span class="char-text">?</span>
+            <div class="progress-container">
+                <svg class="progress-svg"><circle class="progress-bg" cx="50" cy="50" r="40"/><circle class="progress-bar" cx="50" cy="50" r="40"/></svg>
+                <div class="progress-text">⏳ 0%<br><span style="font-size:0.75rem;">ค้างไว้...</span></div>
+            </div>
+        </div>
+
+        <div id="center-display" class="glass-panel">
+            <div id="question-title">รูปภาพนี้ตรงกับพยัญชนะใดเอ่ย?</div>
+            <div id="animal-img-container">
+                <span id="emoji-display">🐔</span>
+            </div>
+            <div id="hint-text">✋ ยกมือค้างไว้ฝั่งคำตอบเลยจ้า ✋</div>
+        </div>
+
+        <div id="choice-right" class="choice-box glass-panel">
+            <span class="char-text">?</span>
+            <div class="progress-container">
+                <svg class="progress-svg"><circle class="progress-bg" cx="50" cy="50" r="40"/><circle class="progress-bar" cx="50" cy="50" r="40"/></svg>
+                <div class="progress-text">⏳ 0%<br><span style="font-size:0.75rem;">ค้างไว้...</span></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="feedback"></div>
+
+    <script>
+        // 🔊 ระบบสร้างเสียงเอฟเฟกต์แบบออฟไลน์ (Web Audio API) ทำงานในตัวเครื่อง 100%
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        function playSound(type) {
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            const now = audioCtx.currentTime;
+
+            if (type === 'correct') {
+                // เสียงปิ๊งป่อง สดใส (คู่เสียงโน้ตสูงขึ้น)
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(523.25, now); // C5
+                osc.frequency.setValueAtTime(659.25, now + 0.1); // E5
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+                osc.start(now);
+                osc.stop(now + 0.4);
+            } else if (type === 'wrong') {
+                // เสียงอ๊ะอ้าว ทุ้มต่ำลง (สไตล์ Buzzer)
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(180, now);
+                osc.frequency.linearRampToValueAtTime(110, now + 0.3);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.3);
+                osc.start(now);
+                osc.stop(now + 0.3);
+            }
+        }
+
+        // 🛠️ คลังตัวการ์ตูนระบบที่ตรงตามแบบเรียนพยัญชนะไทย 100% (รูปขึ้นแน่นอน ไม่มีทางพัง)
+        const thaiAlphabetGame = [
+            { char: 'ก', emoji: '🐔' }, // ก.ไก่
+            { char: 'ข', emoji: '🥚' }, // ข.ไข่
+            { char: 'ฃ', emoji: '🍾' }, // ฃ.ขวด
+            { char: 'ค', emoji: '🐃' }, // ค.ควาย
+            { char: 'ฅ', emoji: '👨' }, // ฅ.คน
+            { char: 'ฆ', emoji: '🔔' }, // ฆ.ระฆัง
+            { char: 'ง', emoji: '🐍' }, // ง.งู
+            { char: 'จ', emoji: '🍽️' }, // จ.จาน
+            { char: 'ฉ', emoji: '🎵' }, // ฉ.ฉิ่ง (สัญลักษณ์ดนตรี)
+            { char: 'ช', emoji: '🐘' }, // ช.ช้าง
+            { char: 'ซ', emoji: '⛓️' }, // ซ.โซ่
+            { char: 'ฌ', emoji: '🌳' }, // เฌอ (ต้นไม้)
+            { char: 'ญ', emoji: '👩' }, // ญ.หญิง
+            { char: 'ฎ', emoji: '👑' }, // ชฎา (มงกุฎ)
+            { char: 'ฏ', emoji: '🔱' }, // ปฏัก (หอกสามง่าม)
+            { char: 'ฐ', emoji: '🧱' }, // ฐาน (แท่นอิฐก่อ)
+            { char: 'ฑ', emoji: '👸' }, // นางมณโฑ
+            { char: 'ฒ', emoji: '👴' }, // ผู้เฒ่า (คนแก่)
+            { char: 'ณ', emoji: '🙏' }, // เณร (พนมมือไหว้)
+            { char: 'ด', emoji: '👶' }, // ด.เด็ก
+            { char: 'ต', emoji: '🐢' }, // ต.เต่า
+            { char: 'ถ', emoji: '🛍️' }, // ถุง
+            { char: 'ท', emoji: '💂' }, // ท.ทหาร (หมวกทหาร)
+            { char: 'ธ', emoji: '🚩' }, // ธ.ธง
+            { char: 'น', emoji: '🐀' }, // น.หนู
+            { char: 'บ', emoji: '🍃' }, // บ.ใบไม้
+            { char: 'ป', emoji: '🐟' }, // ป.ปลา
+            { char: 'ผ', emoji: '🐝' }, // ผ.ผึ้ง
+            { char: 'ฝ', emoji: '🥣' }, // ฝ.ฝา (ฝาครอบปิดอาหาร)
+            { char: 'พ', emoji: '🦚' }, // พาน (นกพุ่มพาน)
+            { char: 'ฟ', emoji: '🦷' }, // ฟ.ฟัน
+            { char: 'ภ', emoji: '⛵' }, // สำเภา (เรือใบสำเภา)
+            { char: 'ม', emoji: '🐎' }, // ม.ม้า
+            { char: 'ย', emoji: '👹' }, // ยักษ์
+            { char: 'ร', emoji: '🚣' }, // ร.เรือ
+            { char: 'ล', emoji: '🐒' }, // ล.ลิง
+            { char: 'ว', emoji: '💍' }, // ว.แหวน
+            { char: 'ศ', emoji: '🏡' }, // ศาลา (ที่พักอาศัย)
+            { char: 'ษ', emoji: '🧘' }, // ษ.ฤาษี (นั่งสมาธิ)
+            { char: 'ส', emoji: '🐯' }, // ส.เสือ
+            { char: 'ห', emoji: '📦' }, // ห.หีบ (กล่องเก็บของ)
+            { char: 'ฬ', emoji: '🪁' }, // ว่าวจุฬา (ว่าวร่อน)
+            { char: 'อ', emoji: '🛁' }, // อ่าง
+            { char: 'ฮ', emoji: '🦉' }  // ฮ.นกฮูก
+        ];
+
+        const videoElement = document.getElementById('webcam');
+        const choiceLeft = document.getElementById('choice-left');
+        const choiceRight = document.getElementById('choice-right');
+        const emojiDisplay = document.getElementById('emoji-display');
+        const scoreText = document.getElementById('score-text');
+        const feedback = document.getElementById('feedback');
+
+        let score = 0; let currentQuestion = {}; let correctSide = ''; let isAnswering = false;
+        let leftHandTimer = 0; let rightHandTimer = 0; 
+        const holdTimeRequired = 25; 
+
+        let remainingQuestions = [...thaiAlphabetGame];
+
+        function generateNewQuestion() {
+            isAnswering = false; leftHandTimer = 0; rightHandTimer = 0;
+            choiceLeft.classList.remove('active-choice'); choiceRight.classList.remove('active-choice');
+            hideProgress(choiceLeft); hideProgress(choiceRight);
+
+            if (remainingQuestions.length === 0) {
+                remainingQuestions = [...thaiAlphabetGame];
+            }
+
+            const randomIndex = Math.floor(Math.random() * remainingQuestions.length);
+            currentQuestion = remainingQuestions[randomIndex];
+            remainingQuestions.splice(randomIndex, 1);
+
+            let wrongChar = '';
+            do {
+                wrongChar = thaiAlphabetGame[Math.floor(Math.random() * thaiAlphabetGame.length)].char;
+            } while (wrongChar === currentQuestion.char);
+
+            if (Math.random() > 0.5) {
+                choiceLeft.querySelector('.char-text').innerText = currentQuestion.char;
+                choiceRight.querySelector('.char-text').innerText = wrongChar;
+                correctSide = 'left';
+            } else {
+                choiceLeft.querySelector('.char-text').innerText = wrongChar;
+                choiceRight.querySelector('.char-text').innerText = currentQuestion.char;
+                correctSide = 'right';
+            }
+
+            // แสดงอิโมจิระบบสัญลักษณ์ทันที ไม่มีวันรูปแตก
+            emojiDisplay.innerText = currentQuestion.emoji;
+        }
+
+        function updateProgress(element, currentFrames) {
+            const container = element.querySelector('.progress-container');
+            const bar = element.querySelector('.progress-bar');
+            const text = element.querySelector('.progress-text');
+            
+            container.style.display = 'block';
+            const percentage = Math.min((currentFrames / holdTimeRequired) * 100, 100);
+            text.innerHTML = `⏳ ${Math.round(percentage)}%<br><span style="font-size:0.75rem;">ค้างไว้...</span>`;
+            
+            const strokeDashoffset = 251.2 - (251.2 * percentage) / 100;
+            bar.style.strokeDashoffset = strokeDashoffset;
+        }
+
+        function hideProgress(element) {
+            element.querySelector('.progress-container').style.display = 'none';
+        }
+
+        const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
+        hands.onResults(onResults);
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => { await hands.send({ image: videoElement }); },
+            width: 1280, height: 720
+        });
+        camera.start();
+
+        function onResults(results) {
+            if (isAnswering) return;
+            
+            choiceLeft.classList.remove('active-choice'); 
+            choiceRight.classList.remove('active-choice');
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const hand = results.multiHandLandmarks[0];
+                const handX = hand[0].x; 
+
+                if (handX > 0.6) { 
+                    choiceLeft.classList.add('active-choice'); 
+                    leftHandTimer++; rightHandTimer = 0;
+                    hideProgress(choiceRight);
+                    updateProgress(choiceLeft, leftHandTimer);
+
+                    if (leftHandTimer >= holdTimeRequired) { checkAnswer('left'); }
+                } else if (handX < 0.4) {
+                    choiceRight.classList.add('active-choice'); 
+                    rightHandTimer++; leftHandTimer = 0;
+                    hideProgress(choiceLeft);
+                    updateProgress(choiceRight, rightHandTimer);
+
+                    if (rightHandTimer >= holdTimeRequired) { checkAnswer('right'); }
+                } else { 
+                    leftHandTimer = 0; rightHandTimer = 0; 
+                    hideProgress(choiceLeft); hideProgress(choiceRight);
+                }
+            } else { 
+                leftHandTimer = 0; rightHandTimer = 0; 
+                hideProgress(choiceLeft); hideProgress(choiceRight);
+            }
+        }
+
+        function checkAnswer(chosenSide) {
+            isAnswering = true;
+            hideProgress(choiceLeft); hideProgress(choiceRight);
+            
+            if (chosenSide === correctSide) {
+                score++; scoreText.innerText = score;
+                feedback.innerText = "🎉 ถูกต้องจ้า เก่งมาก! 🌟";
+                feedback.style.backgroundColor = "rgba(13, 148, 136, 0.95)"; 
+                feedback.style.color = "white";
+                feedback.style.border = "4px solid #2dd4bf";
+                playSound('correct'); // เล่นเสียงปิ๊งป่องเมื่อตอบถูก
+            } else {
+                feedback.innerText = "❌ อ๊ะ! ลองดูอีกทีนะค๊า 🥺";
+                feedback.style.backgroundColor = "rgba(225, 29, 72, 0.95)"; 
+                feedback.style.color = "white";
+                feedback.style.border = "4px solid #f43f5e";
+                playSound('wrong'); // เล่นเสียงอ๊ะอ้าวเมื่อตอบผิด
+            }
+            feedback.style.display = "block";
+            setTimeout(() => {
+                feedback.style.display = "none";
+                generateNewQuestion();
+            }, 2000);
+        }
+
+        window.onload = () => {
+            generateNewQuestion();
+        };
+    </script>
+</body>
+</html>
+
